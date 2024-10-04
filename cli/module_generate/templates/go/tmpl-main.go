@@ -1,11 +1,12 @@
 package main
 
 import (
+	"{{.ModuleName}}/models"
 	"context"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/module"
 	"go.viam.com/utils"
-	"go.viam.com/rdk/{{.ResourceType}}/{{.ResourceSubtype}}"
+	"go.viam.com/rdk/{{.ResourceType}}s/{{.ResourceSubtype}}"
 
 )
 
@@ -19,7 +20,7 @@ func mainWithArgs(ctx context.Context, args []string, logger logging.Logger) err
 		return err
 	}
 	
-	if err = {{.ModuleCamel}}.AddModelFromRegistry(ctx, {{.ResourceSubtype}}.API, {{.ModelCamel}}.Model); err != nil {
+	if err = {{.ModuleCamel}}.AddModelFromRegistry(ctx, {{.ResourceSubtype}}.API, models.{{.ModelPascal}}); err != nil {
 		return err
 	}
 

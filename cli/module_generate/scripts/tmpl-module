@@ -1,17 +1,17 @@
-package {{ .Module.ModelLowercase}}
+package models
 
 import (
-    "go.viam.com/rdk/{{ .Module.ResourceType }}/{{ .Module.ResourceSubtype}}"
+    "go.viam.com/rdk/{{ .Module.ResourceType }}s/{{ .Module.ResourceSubtype}}"
 	{{.Imports}}
 )
 
 var (
-	Model = resource.NewModel("{{ .Module.Namespace}}", "{{ .Module.ModuleName}}", "{{.Module.ModelName}}")
+	{{.Module.ModelPascal}} = resource.NewModel("{{ .Module.Namespace}}", "{{ .Module.ModuleName}}", "{{.Module.ModelName}}")
 	errUnimplemented = errors.New("unimplemented")
 )
 
 func init() {
-	resource.Register{{ .Module.ResourceTypePascal}}({{.Module.ResourceSubtype}}.API, Model,
+	resource.Register{{ .Module.ResourceTypePascal}}({{.Module.ResourceSubtype}}.API, {{.Module.ModelPascal}},
 		resource.Registration[{{.Module.ResourceSubtype}}.{{if eq .Module.ResourceType "component"}}{{.Module.ResourceSubtypePascal}}{{else}}Service{{end}}, *Config]{
 			Constructor: new{{.Module.ModulePascal}}{{.Module.ModelPascal}},
 		},

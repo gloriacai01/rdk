@@ -4,11 +4,17 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/printer"
+	"go/token"
 	"io"
 	"net/http"
 	"strings"
 	"text/template"
-	"time"
+	"unicode"
+
+	"go.viam.com/rdk/cli/module_generate/common"
 
 	"github.com/pkg/errors"
 )
@@ -16,45 +22,7 @@ import (
 //go:embed tmpl-module
 var goTmpl string
 
-// ModuleInputs contains the necessary information to fill out template files.
-type ModuleInputs struct {
-	ModuleName       string    `json:"module_name"`
-	IsPublic         bool      `json:"-"`
-	Namespace        string    `json:"namespace"`
-	Language         string    `json:"language"`
-	Resource         string    `json:"-"`
-	ResourceType     string    `json:"resource_type"`
-	ResourceSubtype  string    `json:"resource_subtype"`
-	ModelName        string    `json:"model_name"`
-	EnableCloudBuild bool      `json:"enable_cloud_build"`
-	InitializeGit    bool      `json:"initialize_git"`
-	RegisterOnApp    bool      `json:"-"`
-	GeneratorVersion string    `json:"generator_version"`
-	GeneratedOn      time.Time `json:"generated_on"`
-
-	ModulePascal          string `json:"-"`
-	ModuleCamel           string `json:"-"`
-	ModuleLowercase       string `json:"-"`
-	API                   string `json:"-"`
-	ResourceSubtypePascal string `json:"-"`
-	ResourceTypePascal    string `json:"r-"`
-	ModelPascal           string `json:"-"`
-	ModelCamel            string `json:"-"`
-	ModelTriple           string `json:"-"`
-	ModelLowercase        string `json:"-"`
-
-	SDKVersion string `json:"-"`
-}
-
-type GoModuleTmpl struct {
-	Module    ModuleInputs
-	ModelType string
-	ObjName   string
-	Imports   string
-	Functions string
-}
-
-func getClientCode(module ModuleInputs) (string, error) {
+func getClientCode(module common.ModuleInputs) (string, error) {
 	url := fmt.Sprintf("https://raw.githubusercontent.com/viamrobotics/rdk/refs/tags/v%s/%ss/%s/client.go", module.SDKVersion, module.ResourceType, module.ResourceSubtype)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -73,8 +41,8 @@ func getClientCode(module ModuleInputs) (string, error) {
 	return clientCode, nil
 }
 
-func setGoModuleTemplate(clientCode string, module ModuleInputs) GoModuleTmpl {
-	var goTmplInputs GoModuleTmpl
+func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.GoModuleTmpl {
+	var goTmplInputs common.GoModuleTmpl
 	start := strings.Index(clientCode, "(\n")
 
 	end := strings.Index(clientCode, ")")
@@ -83,14 +51,15 @@ func setGoModuleTemplate(clientCode string, module ModuleInputs) GoModuleTmpl {
 	// 	return
 	// }
 
-	imports := clientCode[start+1 : end] // +2 to skip '(\n'
+	imports := clientCode[start+1 : end]
 	replacements := []string{
 		"rprotoutils \"go.viam.com/rdk/protoutils\"\n",
-		// `rprotoutils "go.viam.com/rdk/protoutils"\n`,
-		// `rprotoutils`,
+		"\"go.viam.com/rdk/protoutils\"",
+		"commonpb \"go.viam.com/api/common/v1\"\n",
 		"\"go.viam.com/utils/protoutils\"\n",
 		"\"google.golang.org/protobuf/types/known/structpb\"\n",
 		"\"go.viam.com/utils/rpc\"\n",
+		"\"fmt\"",
 	}
 
 	for _, replacement := range replacements {
@@ -105,51 +74,119 @@ func setGoModuleTemplate(clientCode string, module ModuleInputs) GoModuleTmpl {
 		goTmplInputs.ObjName = "Service"
 	}
 	goTmplInputs.ModelType = module.ModuleCamel + module.ModelPascal
-
-	functions := strings.Split(clientCode, "func (c *client)")[1:]
-
-	for i, function := range functions {
-		functions[i] = fmt.Sprintf("func (s *%s)", goTmplInputs.ModelType) + function
-		start := strings.Index(functions[i], "{\n")
-		funcDef := functions[i][:start+1]
-		numParen := strings.Count(funcDef, ")")
-		returnString := ""
-		if numParen >= 3 {
-			lastOpenParen := strings.LastIndex(funcDef, "(")
-			returns := strings.TrimSpace(funcDef[lastOpenParen+1 : start-2])
-			slice := strings.Split(returns, ",")
-
-			for i, v := range slice {
-				if v == "bool" {
-					slice[i] = "false"
-				} else if strings.Contains(slice[i], "error") {
-					slice[i] = " errUnimplemented"
-				} else {
-					slice[i] = "nil"
-				}
-			}
-			returnString = strings.Join(slice, ",")
-
-		} else if strings.Contains(funcDef, "error") {
-			returnString = " errUnimplemented"
-		} else {
-			returnString = " nil"
-		}
-		end := strings.LastIndex(functions[i], "}")
-		if start != -1 && end != -1 {
-			inside := functions[i][start+1 : end]
-			returnStatement := fmt.Sprintf("\n\treturn %s\n", returnString)
-			functions[i] = strings.Replace(functions[i], inside, returnStatement, 1)
-		}
-
-	}
-	goTmplInputs.Functions = strings.Join(functions, "")
+	goTmplInputs.Functions = parseFuncs(module.ResourceSubtype, module.ResourceSubtypePascal, goTmplInputs.ModelType, clientCode)
 	goTmplInputs.Module = module
 
 	return goTmplInputs
 }
 
-func RenderGoTemplates(module ModuleInputs) ([]byte, error) {
+func formatType(typeExpr ast.Expr) string {
+	var buf bytes.Buffer
+	err := printer.Fprint(&buf, token.NewFileSet(), typeExpr)
+	if err != nil {
+		return fmt.Sprintf("Error formatting type: %v", err)
+	}
+	return buf.String()
+}
+
+func newReturnStatement(resourceSubtype string, returns []string) string {
+	for i, r := range returns {
+		if r == "bool" {
+			returns[i] = "false"
+		} else if r == "string" {
+			returns[i] = "\"\""
+		} else if strings.Contains(r, "error") {
+			returns[i] = "errUnimplemented"
+		} else if strings.Contains(r, "Properties") {
+			returns[i] = resourceSubtype + ".Properties{}"
+		} else if strings.Contains(r, "func") {
+			returns[i] = "nil"
+		} else {
+			returns[i] = "nil"
+		}
+	}
+	return fmt.Sprintf("return %s", strings.Join(returns, ", "))
+}
+
+func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string, funcDecl *ast.FuncDecl) (name string, args string, returns []string) {
+	if funcDecl == nil {
+		return
+	}
+
+	// Function name
+	funcName := funcDecl.Name.Name
+	if !unicode.IsUpper(rune(funcName[0])) {
+		return
+	}
+	if funcName == "Close" {
+		return
+	}
+
+	// Parameters
+	var params []string
+	if funcDecl.Type.Params != nil {
+		for _, param := range funcDecl.Type.Params.List {
+			paramType := formatType(param.Type)
+			for _, name := range param.Names {
+				params = append(params, name.Name+" "+paramType)
+			}
+		}
+	}
+
+	// Return types
+	if funcDecl.Type.Results != nil {
+		for _, result := range funcDecl.Type.Results.List {
+			str := formatType(result.Type)
+			if unicode.IsUpper(rune(str[0])) {
+				str = fmt.Sprintf("%s.%s", resourceSubtype, str)
+			} else if str == resourceSubtypePascal {
+				str = fmt.Sprintf("%s.%s", resourceSubtype, resourceSubtypePascal)
+			}
+			returns = append(returns, str)
+		}
+	}
+
+	return funcName, strings.Join(params, ", "), returns
+
+}
+
+func formatEmptyFunction(receiver string, resourceSubtype string, funcName string, args string, returns []string) string {
+	var returnDef string
+	if len(returns) == 0 {
+		returnDef = ""
+	} else if len(returns) == 1 {
+		returnDef = returns[0]
+	} else {
+		returnDef = fmt.Sprintf("(%s)", strings.Join(returns, ","))
+	}
+	newReturn := newReturnStatement(resourceSubtype, returns)
+	newFunc := fmt.Sprintf("func (s *%s) %s(%s) %s{\n\t%s\n}\n\n", receiver, funcName, args, returnDef, newReturn)
+	return newFunc
+
+}
+
+func parseFuncs(resourceSubtype string, resourceSubtypePascal string, modelType string, code string) string {
+	var functions []string
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, "", code, parser.AllErrors)
+	if err != nil {
+		fmt.Println("Error parsing source:", err)
+		return ""
+	}
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		if funcDecl, ok := n.(*ast.FuncDecl); ok {
+			name, args, returns := parseFunctionSignature(resourceSubtype, resourceSubtypePascal, funcDecl)
+			if name != "" {
+				functions = append(functions, formatEmptyFunction(modelType, resourceSubtype, name, args, returns))
+			}
+		}
+		return true
+	})
+	return strings.Join(functions, " ")
+}
+
+func RenderGoTemplates(module common.ModuleInputs) ([]byte, error) {
 	clientCode, err := getClientCode(module)
 	var empty []byte
 	if err != nil {

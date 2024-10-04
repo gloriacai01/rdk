@@ -15,6 +15,7 @@ import (
 	"text/template"
 	"time"
 
+	"go.viam.com/rdk/cli/module_generate/common"
 	gen "go.viam.com/rdk/cli/module_generate/scripts"
 
 	"github.com/charmbracelet/huh"
@@ -136,9 +137,9 @@ func (c *viamClient) generateModuleAction(cCtx *cli.Context) error {
 }
 
 // Prompt the user for information regarding the module they want to create
-// returns the gen.ModuleInputs struct that contains the information the user entered.
-func promptUser() (*gen.ModuleInputs, error) {
-	var newModule gen.ModuleInputs
+// returns the common.ModuleInputs struct that contains the information the user entered.
+func promptUser() (*common.ModuleInputs, error) {
+	var newModule common.ModuleInputs
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewNote().
@@ -279,7 +280,7 @@ func setupDirectories(c *cli.Context, moduleName string) error {
 	return nil
 }
 
-func renderCommonFiles(c *cli.Context, module gen.ModuleInputs) error {
+func renderCommonFiles(c *cli.Context, module common.ModuleInputs) error {
 	debugf(c.App.Writer, c.Bool(debugFlag), "Rendering common files")
 
 	// Render .viam-gen-info
@@ -371,9 +372,6 @@ func copyLanguageTemplate(c *cli.Context, language, modelName string, moduleName
 		if d.IsDir() {
 			if d.Name() != language {
 				debugf(c.App.Writer, c.Bool(debugFlag), "\tCopying %s directory", d.Name())
-				// if language == "go" {
-				// 	path = modelName
-				// }
 				err = os.Mkdir(filepath.Join(moduleName, path), 0o755)
 				if err != nil {
 					return err
@@ -408,7 +406,7 @@ func copyLanguageTemplate(c *cli.Context, language, modelName string, moduleName
 }
 
 // Render all the files in the new directory.
-func renderTemplate(c *cli.Context, module gen.ModuleInputs) error {
+func renderTemplate(c *cli.Context, module common.ModuleInputs) error {
 	debugf(c.App.Writer, c.Bool(debugFlag), "Rendering template files")
 	languagePath := filepath.Join(templatesPath, module.Language)
 	tempDir, err := fs.Sub(templates, languagePath)
@@ -455,7 +453,7 @@ func renderTemplate(c *cli.Context, module gen.ModuleInputs) error {
 }
 
 // Generate stubs for the resource.
-func generateStubs(c *cli.Context, module gen.ModuleInputs) error {
+func generateStubs(c *cli.Context, module common.ModuleInputs) error {
 	debugf(c.App.Writer, c.Bool(debugFlag), "Generating %s stubs", module.Language)
 	switch module.Language {
 	case "python":
@@ -467,13 +465,13 @@ func generateStubs(c *cli.Context, module gen.ModuleInputs) error {
 	}
 }
 
-func generateGolangStubs(module gen.ModuleInputs) error {
+func generateGolangStubs(module common.ModuleInputs) error {
 	out, err := gen.RenderGoTemplates(module)
 	if err != nil {
 		return err
 	}
 
-	modulePath := filepath.Join(module.ModuleName, "model", "module.go")
+	modulePath := filepath.Join(module.ModuleName, "models", "module.go")
 	moduleFile, err := os.Create(modulePath)
 	if err != nil {
 		return errors.Wrap(err, "cannot generate go stubs -- unable to open file")
@@ -484,24 +482,11 @@ func generateGolangStubs(module gen.ModuleInputs) error {
 		return errors.Wrap(err, "cannot generate python stubs -- unable to write to file")
 	}
 
-	// cmd := exec.Command(filepath.Join(module.ModuleName), "go", "mod", "init", module.ModuleLowercase)
-	// _, err = cmd.Output()
-	// if err != nil {
-	// 	fmt.Printf(" whyyyy %s", err)
-	// 	return err
-	// }
-	// cmd = exec.Command(filepath.Join(module.ModuleName), "go", "mod", "tidy")
-	// _, err = cmd.Output()
-	// if err != nil {
-	// 	fmt.Printf(" grr %s", err)
-
-	// 	return err
-	// }
 	return nil
 
 }
 
-func generatePythonStubs(module gen.ModuleInputs) error {
+func generatePythonStubs(module common.ModuleInputs) error {
 	venvName := ".venv"
 	cmd := exec.Command("python3", "--version")
 	_, err := cmd.Output()
@@ -572,7 +557,7 @@ func getLatestSDKTag(c *cli.Context, language string) (string, error) {
 	return version, nil
 }
 
-func generateCloudBuild(c *cli.Context, module gen.ModuleInputs) error {
+func generateCloudBuild(c *cli.Context, module common.ModuleInputs) error {
 	debugf(c.App.Writer, c.Bool(debugFlag), "Setting cloud build functionality to %s", module.EnableCloudBuild)
 	switch module.Language {
 	case "python":
@@ -585,7 +570,7 @@ func generateCloudBuild(c *cli.Context, module gen.ModuleInputs) error {
 	return nil
 }
 
-func createModuleAndManifest(cCtx *cli.Context, c *viamClient, module gen.ModuleInputs) error {
+func createModuleAndManifest(cCtx *cli.Context, c *viamClient, module common.ModuleInputs) error {
 	var moduleId moduleID
 	if module.RegisterOnApp {
 		debugf(cCtx.App.Writer, cCtx.Bool(debugFlag), "Registering module with Viam")
@@ -619,7 +604,7 @@ func createModuleAndManifest(cCtx *cli.Context, c *viamClient, module gen.Module
 }
 
 // Create the meta.json manifest.
-func renderManifest(c *cli.Context, moduleID string, module gen.ModuleInputs) error {
+func renderManifest(c *cli.Context, moduleID string, module common.ModuleInputs) error {
 	debugf(c.App.Writer, c.Bool(debugFlag), "Rendering module manifest")
 
 	visibility := moduleVisibilityPrivate
@@ -649,6 +634,8 @@ func renderManifest(c *cli.Context, moduleID string, module gen.ModuleInputs) er
 		} else {
 			manifest.Entrypoint = "./run.sh"
 		}
+	} else {
+		manifest.Entrypoint = "./run.sh"
 	}
 
 	if err := writeManifest(filepath.Join(module.ModuleName, defaultManifestFilename), manifest); err != nil {

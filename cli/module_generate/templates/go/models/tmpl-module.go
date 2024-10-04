@@ -1,21 +1,22 @@
-package {{ .ModelLowercase}}
+package models
 
 import (
-    "go.viam.com/rdk/{{ .ResourceType }}/{{ .ResourceSubtype}}"
+    "go.viam.com/rdk/{{ .ResourceType }}s/{{ .ResourceSubtype}}"
 )
 
 var (
-	Model = resource.NewModel("{{ .Namespace}}", "{{ .ModuleName}}", "{{.ModelName}}")
+	{{.ModelPascal}} = resource.NewModel("{{ .Namespace}}", "{{ .ModuleName}}", "{{.ModelName}}")
 	errUnimplemented = errors.New("unimplemented")
 )
 
 func init() {
-	resource.Register{{ .ResourceType}}({{.ResourceSubtype}}.API, Model,
+	resource.Register{{ .ResourceType}}({{.ResourceSubtype}}.API, {{.ModelPascal}},
 		resource.Registration[{{.ResourceSubtype}}.{{if eq .ResourceType "component"}}{{.ResourceSubtypePascal}}{{else}}Service{{end}}, *Config]{
 			Constructor: new{{.ModulePascal}}{{.ModelPascal}},
 		},
 	)
 }
+
 
 type Config struct {
 	// Put config attributes here
