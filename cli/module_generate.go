@@ -255,18 +255,19 @@ func promptUser() (*common.ModuleInputs, error) {
 	newModule.ResourceType = strings.Split(newModule.Resource, " ")[1]
 
 	titleCaser := cases.Title(language.Und)
-	replacer := strings.NewReplacer("_", "", "-", "")
-	newModule.ModulePascal = replacer.Replace(titleCaser.String(newModule.ModuleName))
+	replacer := strings.NewReplacer("_", " ", "-", " ")
+	spaceReplacer := strings.NewReplacer(" ", "", "_", "", "-", "")
+	newModule.ModulePascal = spaceReplacer.Replace(titleCaser.String(replacer.Replace(newModule.ModuleName)))
 	newModule.ModuleCamel = strings.ToLower(string(newModule.ModulePascal[0])) + newModule.ModulePascal[1:]
 	newModule.ModuleLowercase = strings.ToLower(newModule.ModulePascal)
 	newModule.API = fmt.Sprintf("rdk:%s:%s", newModule.ResourceType, newModule.ResourceSubtype)
-	newModule.ResourceSubtypePascal = replacer.Replace(titleCaser.String(newModule.ResourceSubtype))
+	newModule.ResourceSubtypePascal = spaceReplacer.Replace(titleCaser.String(replacer.Replace(newModule.ResourceSubtype)))
 	if newModule.Language == "go" {
 		// go sdk does not use underscores
-		newModule.ResourceSubtype = replacer.Replace(newModule.ResourceSubtype)
+		newModule.ResourceSubtype = spaceReplacer.Replace(newModule.ResourceSubtype)
 	}
-	newModule.ResourceTypePascal = replacer.Replace(titleCaser.String(newModule.ResourceType))
-	newModule.ModelPascal = replacer.Replace(titleCaser.String(newModule.ModelName))
+	newModule.ResourceTypePascal = spaceReplacer.Replace(titleCaser.String(replacer.Replace(newModule.ResourceType)))
+	newModule.ModelPascal = spaceReplacer.Replace(titleCaser.String(replacer.Replace(newModule.ModelName)))
 	newModule.ModelTriple = fmt.Sprintf("%s:%s:%s", newModule.Namespace, newModule.ModuleName, newModule.ModelName)
 	newModule.ModelCamel = strings.ToLower(string(newModule.ModelPascal[0])) + newModule.ModelPascal[1:]
 	newModule.ModelLowercase = strings.ToLower(newModule.ModelPascal)
@@ -276,6 +277,7 @@ func promptUser() (*common.ModuleInputs, error) {
 
 // Creates a new directory with moduleName.
 func setupDirectories(c *cli.Context, moduleName string) error {
+
 	debugf(c.App.Writer, c.Bool(debugFlag), "Setting up directories")
 	err := os.Mkdir(moduleName, 0o755)
 	if err != nil {
@@ -285,6 +287,7 @@ func setupDirectories(c *cli.Context, moduleName string) error {
 }
 
 func renderCommonFiles(c *cli.Context, module common.ModuleInputs) error {
+	debugf(c.App.Writer, c.Bool(debugFlag), module.ResourceSubtypePascal)
 	debugf(c.App.Writer, c.Bool(debugFlag), "Rendering common files")
 
 	// Render .viam-gen-info

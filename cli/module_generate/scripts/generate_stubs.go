@@ -94,33 +94,35 @@ func formatType(typeExpr ast.Expr) string {
 	return buf.String()
 }
 
-// newReturnStatement returns the appropiate return statement with nils, errUnimplemented, empty structs
-func newReturnStatement(resourceSubtype string, returns []string) string {
-	for i, r := range returns {
-		if r == "bool" {
-			returns[i] = "false"
-		} else if r[0] == '*' {
-			returns[i] = "nil"
-		} else if strings.Contains(r, "float") {
-			returns[i] = "-1"
-		} else if r == "string" {
-			returns[i] = "\"\""
-		} else if strings.Contains(r, "error") {
-			returns[i] = "errUnimplemented"
-		} else if strings.Contains(r, "Properties") {
-			returns[i] = resourceSubtype + ".Properties{}"
-		} else if strings.Contains(r, "Accuracy") {
-			returns[i] = resourceSubtype + ".Accuracy{}"
-		} else if strings.Contains(r, "r3.Vector") {
-			returns[i] = "r3.Vector{}"
-		} else if strings.Contains(r, "func") {
-			returns[i] = "nil"
-		} else {
-			returns[i] = "nil"
-		}
-	}
-	return fmt.Sprintf("return %s", strings.Join(returns, ", "))
-}
+// // newReturnStatement returns the appropiate return statement with nils, errUnimplemented, empty structs
+// func newReturnStatement(resourceSubtype string, returns []string) string {
+// 	for i, r := range returns {
+// 		if r == "bool" {
+// 			returns[i] = "false"
+// 		} else if r[0] == '*' {
+// 			returns[i] = "nil"
+// 		} else if strings.Contains(r, "float") {
+// 			returns[i] = "-1"
+// 		} else if r == "string" {
+// 			returns[i] = "\"\""
+// 		} else if strings.Contains(r, "error") {
+// 			returns[i] = "errUnimplemented"
+// 		} else if strings.Contains(r, "Properties") {
+// 			returns[i] = resourceSubtype + ".Properties{}"
+// 		} else if strings.Contains(r, "Accuracy") {
+// 			returns[i] = resourceSubtype + ".Accuracy{}"
+// 		} else if strings.Contains(r, "r3.Vector") {
+// 			returns[i] = "r3.Vector{}"
+// 		} else if strings.Contains(r, "spatialmath.AngularVelocity") {
+// 			returns[i] = "spatialmath.AngularVelocity{}"
+// 		} else if strings.Contains(r, "func") {
+// 			returns[i] = "nil"
+// 		} else {
+// 			returns[i] = "nil"
+// 		}
+// 	}
+// 	return fmt.Sprintf("return %s", strings.Join(returns, ", "))
+// }
 
 // parseFunctionSignature parses function declarations into the function name, the arguments, and the return types
 func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string, funcDecl *ast.FuncDecl) (name string, args string, returns []string) {
@@ -185,8 +187,8 @@ func formatEmptyFunction(receiver string, resourceSubtype string, funcName strin
 	} else {
 		returnDef = fmt.Sprintf("(%s)", strings.Join(returns, ","))
 	}
-	newReturn := newReturnStatement(resourceSubtype, returns)
-	newFunc := fmt.Sprintf("func (s *%s) %s(%s) %s{\n\t%s\n}\n\n", receiver, funcName, args, returnDef, newReturn)
+	// newReturn := newReturnStatement(resourceSubtype, returns)
+	newFunc := fmt.Sprintf("func (s *%s) %s(%s) %s{\n\tpanic(\"not implemented\")\n}\n\n", receiver, funcName, args, returnDef)
 	return newFunc
 
 }
