@@ -22,6 +22,7 @@ import (
 //go:embed tmpl-module
 var goTmpl string
 
+// getClientCode grabs client.go code of component type
 func getClientCode(module common.ModuleInputs) (string, error) {
 	url := fmt.Sprintf("https://raw.githubusercontent.com/viamrobotics/rdk/refs/tags/v%s/%ss/%s/client.go", module.SDKVersion, module.ResourceType, module.ResourceSubtype)
 	resp, err := http.Get(url)
@@ -41,6 +42,7 @@ func getClientCode(module common.ModuleInputs) (string, error) {
 	return clientCode, nil
 }
 
+// setGoModuleTemplate sets the imports and functions for the go method stubs
 func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.GoModuleTmpl {
 	var goTmplInputs common.GoModuleTmpl
 	start := strings.Index(clientCode, "(\n")
@@ -58,8 +60,10 @@ func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.G
 		"commonpb \"go.viam.com/api/common/v1\"\n",
 		"\"go.viam.com/utils/protoutils\"\n",
 		"\"google.golang.org/protobuf/types/known/structpb\"\n",
-		"\"go.viam.com/utils/rpc\"\n",
 		"\"fmt\"",
+		"\"go.viam.com/utils/rpc\"\n",
+		// fmt.Sprintf("pb \"go.viam.com/api/component/%s/v1\"\n", module.ResourceSubtype),
+		"\"errors\"",
 	}
 
 	for _, replacement := range replacements {
@@ -80,6 +84,7 @@ func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.G
 	return goTmplInputs
 }
 
+// formatType outputs typeExpr as string
 func formatType(typeExpr ast.Expr) string {
 	var buf bytes.Buffer
 	err := printer.Fprint(&buf, token.NewFileSet(), typeExpr)
@@ -89,16 +94,25 @@ func formatType(typeExpr ast.Expr) string {
 	return buf.String()
 }
 
+// newReturnStatement returns the appropiate return statement with nils, errUnimplemented, empty structs
 func newReturnStatement(resourceSubtype string, returns []string) string {
 	for i, r := range returns {
 		if r == "bool" {
 			returns[i] = "false"
+		} else if r[0] == '*' {
+			returns[i] = "nil"
+		} else if strings.Contains(r, "float") {
+			returns[i] = "-1"
 		} else if r == "string" {
 			returns[i] = "\"\""
 		} else if strings.Contains(r, "error") {
 			returns[i] = "errUnimplemented"
 		} else if strings.Contains(r, "Properties") {
 			returns[i] = resourceSubtype + ".Properties{}"
+		} else if strings.Contains(r, "Accuracy") {
+			returns[i] = resourceSubtype + ".Accuracy{}"
+		} else if strings.Contains(r, "r3.Vector") {
+			returns[i] = "r3.Vector{}"
 		} else if strings.Contains(r, "func") {
 			returns[i] = "nil"
 		} else {
@@ -108,6 +122,7 @@ func newReturnStatement(resourceSubtype string, returns []string) string {
 	return fmt.Sprintf("return %s", strings.Join(returns, ", "))
 }
 
+// parseFunctionSignature parses function declarations into the function name, the arguments, and the return types
 func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string, funcDecl *ast.FuncDecl) (name string, args string, returns []string) {
 	if funcDecl == nil {
 		return
@@ -137,10 +152,20 @@ func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string
 	if funcDecl.Type.Results != nil {
 		for _, result := range funcDecl.Type.Results.List {
 			str := formatType(result.Type)
+			isPointer := false
+			if str[0] == '*' {
+				str = str[1:]
+				isPointer = true
+			}
 			if unicode.IsUpper(rune(str[0])) {
 				str = fmt.Sprintf("%s.%s", resourceSubtype, str)
+			} else if strings.HasPrefix(str, "[]") && unicode.IsUpper(rune(str[2])) {
+				str = fmt.Sprintf("[]%s.%s", resourceSubtype, str[2:])
 			} else if str == resourceSubtypePascal {
 				str = fmt.Sprintf("%s.%s", resourceSubtype, resourceSubtypePascal)
+			}
+			if isPointer {
+				str = fmt.Sprintf("*%s", str)
 			}
 			returns = append(returns, str)
 		}
@@ -150,6 +175,7 @@ func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string
 
 }
 
+// formatEmptyFunction outputs the new function that removes the function body, adds the new return statement with errUnimplemented, and replaces the receiver with the new model type
 func formatEmptyFunction(receiver string, resourceSubtype string, funcName string, args string, returns []string) string {
 	var returnDef string
 	if len(returns) == 0 {
@@ -165,6 +191,7 @@ func formatEmptyFunction(receiver string, resourceSubtype string, funcName strin
 
 }
 
+// parseFuncs inspects the client code as an AST, parses the functions, and outputs the method stubs
 func parseFuncs(resourceSubtype string, resourceSubtypePascal string, modelType string, code string) string {
 	var functions []string
 	fset := token.NewFileSet()
@@ -186,6 +213,7 @@ func parseFuncs(resourceSubtype string, resourceSubtypePascal string, modelType 
 	return strings.Join(functions, " ")
 }
 
+// RenderGoTemplates outputs the method stubs for module
 func RenderGoTemplates(module common.ModuleInputs) ([]byte, error) {
 	clientCode, err := getClientCode(module)
 	var empty []byte

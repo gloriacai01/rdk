@@ -124,7 +124,7 @@ func (c *viamClient) generateModuleAction(cCtx *cli.Context) error {
 
 	if fatalError != nil {
 		debugf(cCtx.App.Writer, cCtx.Bool(debugFlag), "Fatal error, removing module directories")
-		// os.RemoveAll(newModule.ModuleName)
+		os.RemoveAll(newModule.ModuleName)
 		return errors.Wrap(fatalError, "unable to generate module")
 	}
 
@@ -261,6 +261,10 @@ func promptUser() (*common.ModuleInputs, error) {
 	newModule.ModuleLowercase = strings.ToLower(newModule.ModulePascal)
 	newModule.API = fmt.Sprintf("rdk:%s:%s", newModule.ResourceType, newModule.ResourceSubtype)
 	newModule.ResourceSubtypePascal = replacer.Replace(titleCaser.String(newModule.ResourceSubtype))
+	if newModule.Language == "go" {
+		// go sdk does not use underscores
+		newModule.ResourceSubtype = replacer.Replace(newModule.ResourceSubtype)
+	}
 	newModule.ResourceTypePascal = replacer.Replace(titleCaser.String(newModule.ResourceType))
 	newModule.ModelPascal = replacer.Replace(titleCaser.String(newModule.ModelName))
 	newModule.ModelTriple = fmt.Sprintf("%s:%s:%s", newModule.Namespace, newModule.ModuleName, newModule.ModelName)

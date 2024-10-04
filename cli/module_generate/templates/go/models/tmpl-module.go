@@ -22,7 +22,7 @@ type Config struct {
 	// Put config attributes here
 
 	/* if your model  does not need a config,
-	   replace *Config on line 13 with resource.NoNativeConfig */
+	   replace *Config in the init function with resource.NoNativeConfig */
 
 	/* Uncomment this if your model does not need to be validated
 	    and has no implicit dependecies. */
