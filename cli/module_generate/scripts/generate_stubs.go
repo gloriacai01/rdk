@@ -38,7 +38,6 @@ func getClientCode(module common.ModuleInputs) (string, error) {
 		return url, errors.Errorf("Error reading response body:", err)
 	}
 	clientCode := string(body)
-
 	return clientCode, nil
 }
 
@@ -48,10 +47,6 @@ func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.G
 	start := strings.Index(clientCode, "(\n")
 
 	end := strings.Index(clientCode, ")")
-	// if start == -1 || end == -1 || start >= end {
-	// 	fmt.Println("No imports found.")
-	// 	return
-	// }
 
 	imports := clientCode[start+1 : end]
 	replacements := []string{
@@ -62,7 +57,6 @@ func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.G
 		"\"google.golang.org/protobuf/types/known/structpb\"\n",
 		"\"fmt\"",
 		"\"go.viam.com/utils/rpc\"\n",
-		// fmt.Sprintf("pb \"go.viam.com/api/component/%s/v1\"\n", module.ResourceSubtype),
 		"\"errors\"",
 	}
 
@@ -84,7 +78,7 @@ func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.G
 	return goTmplInputs
 }
 
-// formatType outputs typeExpr as string
+// formatType outputs typeExpr as readable string
 func formatType(typeExpr ast.Expr) string {
 	var buf bytes.Buffer
 	err := printer.Fprint(&buf, token.NewFileSet(), typeExpr)
@@ -93,36 +87,6 @@ func formatType(typeExpr ast.Expr) string {
 	}
 	return buf.String()
 }
-
-// // newReturnStatement returns the appropiate return statement with nils, errUnimplemented, empty structs
-// func newReturnStatement(resourceSubtype string, returns []string) string {
-// 	for i, r := range returns {
-// 		if r == "bool" {
-// 			returns[i] = "false"
-// 		} else if r[0] == '*' {
-// 			returns[i] = "nil"
-// 		} else if strings.Contains(r, "float") {
-// 			returns[i] = "-1"
-// 		} else if r == "string" {
-// 			returns[i] = "\"\""
-// 		} else if strings.Contains(r, "error") {
-// 			returns[i] = "errUnimplemented"
-// 		} else if strings.Contains(r, "Properties") {
-// 			returns[i] = resourceSubtype + ".Properties{}"
-// 		} else if strings.Contains(r, "Accuracy") {
-// 			returns[i] = resourceSubtype + ".Accuracy{}"
-// 		} else if strings.Contains(r, "r3.Vector") {
-// 			returns[i] = "r3.Vector{}"
-// 		} else if strings.Contains(r, "spatialmath.AngularVelocity") {
-// 			returns[i] = "spatialmath.AngularVelocity{}"
-// 		} else if strings.Contains(r, "func") {
-// 			returns[i] = "nil"
-// 		} else {
-// 			returns[i] = "nil"
-// 		}
-// 	}
-// 	return fmt.Sprintf("return %s", strings.Join(returns, ", "))
-// }
 
 // parseFunctionSignature parses function declarations into the function name, the arguments, and the return types
 func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string, funcDecl *ast.FuncDecl) (name string, args string, returns []string) {
@@ -159,6 +123,7 @@ func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string
 				str = str[1:]
 				isPointer = true
 			}
+			// add subtype package name for exported types from that package
 			if unicode.IsUpper(rune(str[0])) {
 				str = fmt.Sprintf("%s.%s", resourceSubtype, str)
 			} else if strings.HasPrefix(str, "[]") && unicode.IsUpper(rune(str[2])) {
@@ -177,8 +142,8 @@ func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string
 
 }
 
-// formatEmptyFunction outputs the new function that removes the function body, adds the new return statement with errUnimplemented, and replaces the receiver with the new model type
-func formatEmptyFunction(receiver string, resourceSubtype string, funcName string, args string, returns []string) string {
+// formatEmptyFunction outputs the new function that removes the function body, adds the panic unimplemented statement, and replaces the receiver with the new model type
+func formatEmptyFunction(receiver string, funcName string, args string, returns []string) string {
 	var returnDef string
 	if len(returns) == 0 {
 		returnDef = ""
@@ -187,7 +152,6 @@ func formatEmptyFunction(receiver string, resourceSubtype string, funcName strin
 	} else {
 		returnDef = fmt.Sprintf("(%s)", strings.Join(returns, ","))
 	}
-	// newReturn := newReturnStatement(resourceSubtype, returns)
 	newFunc := fmt.Sprintf("func (s *%s) %s(%s) %s{\n\tpanic(\"not implemented\")\n}\n\n", receiver, funcName, args, returnDef)
 	return newFunc
 
@@ -207,7 +171,7 @@ func parseFuncs(resourceSubtype string, resourceSubtypePascal string, modelType 
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
 			name, args, returns := parseFunctionSignature(resourceSubtype, resourceSubtypePascal, funcDecl)
 			if name != "" {
-				functions = append(functions, formatEmptyFunction(modelType, resourceSubtype, name, args, returns))
+				functions = append(functions, formatEmptyFunction(modelType, name, args, returns))
 			}
 		}
 		return true

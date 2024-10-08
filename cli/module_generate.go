@@ -90,7 +90,7 @@ func (c *viamClient) generateModuleAction(cCtx *cli.Context) error {
 		}
 
 		s.Title(fmt.Sprintf("Copying %s files...", newModule.Language))
-		if err = copyLanguageTemplate(cCtx, newModule.Language, newModule.ModelName, newModule.ModuleName); err != nil {
+		if err = copyLanguageTemplate(cCtx, newModule.Language, newModule.ModuleName); err != nil {
 			fatalError = err
 			return
 		}
@@ -365,7 +365,7 @@ func renderCommonFiles(c *cli.Context, module common.ModuleInputs) error {
 }
 
 // copyLanguageTemplate copies the files from templates/language directory into the moduleName root directory.
-func copyLanguageTemplate(c *cli.Context, language, modelName string, moduleName string) error {
+func copyLanguageTemplate(c *cli.Context, language, moduleName string) error {
 	debugf(c.App.Writer, c.Bool(debugFlag), "Creating %s template files", language)
 	languagePath := filepath.Join(templatesPath, language)
 	tempDir, err := fs.Sub(templates, languagePath)
@@ -573,6 +573,12 @@ func generateCloudBuild(c *cli.Context, module common.ModuleInputs) error {
 		} else {
 			os.Remove(filepath.Join(module.ModuleName, "build.sh"))
 		}
+	case "go":
+		if module.EnableCloudBuild {
+			os.Remove(filepath.Join(module.ModuleName, "run.sh"))
+		} else {
+			os.Remove(filepath.Join(module.ModuleName, ".canon.yaml"))
+		}
 	}
 	return nil
 }
@@ -628,8 +634,8 @@ func renderManifest(c *cli.Context, moduleID string, module common.ModuleInputs)
 			{API: module.API, Model: module.ModelTriple},
 		},
 	}
-
-	if module.Language == "python" {
+	switch module.Language {
+	case "python":
 		if module.EnableCloudBuild {
 			manifest.Build = &manifestBuildInfo{
 				Setup: "./setup.sh",
@@ -641,8 +647,18 @@ func renderManifest(c *cli.Context, moduleID string, module common.ModuleInputs)
 		} else {
 			manifest.Entrypoint = "./run.sh"
 		}
-	} else {
-		manifest.Entrypoint = "./run.sh"
+	case "go":
+		if module.EnableCloudBuild {
+			manifest.Build = &manifestBuildInfo{
+				Setup: "make setup",
+				Build: "make module.tar.gz",
+				Path:  "bin/module.tar.gz",
+				Arch:  []string{"linux/amd64", "linux/arm64"},
+			}
+			manifest.Entrypoint = fmt.Sprintf("bin/%s", module.ModuleName)
+		} else {
+			manifest.Entrypoint = "./run.sh"
+		}
 	}
 
 	if err := writeManifest(filepath.Join(module.ModuleName, defaultManifestFilename), manifest); err != nil {

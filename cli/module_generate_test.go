@@ -13,11 +13,12 @@ import (
 	"go.viam.com/test"
 	"google.golang.org/grpc"
 
+	"go.viam.com/rdk/cli/module_generate/common"
 	"go.viam.com/rdk/testutils/inject"
 )
 
 func TestGenerateModuleAction(t *testing.T) {
-	expectedPythonTestModule := ModuleInputs{
+	expectedPythonTestModule := common.ModuleInputs{
 		ModuleName:       "my-module",
 		IsPublic:         false,
 		Namespace:        "my-org",
@@ -67,7 +68,7 @@ func TestGenerateModuleAction(t *testing.T) {
 		defer viamGenInfo.Close()
 		bytes, err := io.ReadAll(viamGenInfo)
 		test.That(t, err, test.ShouldBeNil)
-		var module ModuleInputs
+		var module common.ModuleInputs
 		err = json.Unmarshal(bytes, &module)
 		test.That(t, err, test.ShouldBeNil)
 		test.That(t, module.ModuleName, test.ShouldEqual, expectedPythonTestModule.ModuleName)
