@@ -2,7 +2,6 @@ package models
 
 import (
     "go.viam.com/rdk/{{ .Module.ResourceType }}s/{{ .Module.ResourceSubtype}}"
-	"errors"
 	{{.Imports}}
 )
 

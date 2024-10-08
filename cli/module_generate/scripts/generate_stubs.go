@@ -9,6 +9,7 @@ import (
 	"go/printer"
 	"go/token"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"text/template"
@@ -44,35 +45,44 @@ func getClientCode(module common.ModuleInputs) (string, error) {
 // setGoModuleTemplate sets the imports and functions for the go method stubs
 func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.GoModuleTmpl {
 	var goTmplInputs common.GoModuleTmpl
-	start := strings.Index(clientCode, "(\n")
 
-	end := strings.Index(clientCode, ")")
-
-	imports := clientCode[start+1 : end]
-	replacements := []string{
-		"rprotoutils \"go.viam.com/rdk/protoutils\"\n",
-		"\"go.viam.com/rdk/protoutils\"",
-		"commonpb \"go.viam.com/api/common/v1\"\n",
-		"\"go.viam.com/utils/protoutils\"\n",
-		"\"google.golang.org/protobuf/types/known/structpb\"\n",
-		"\"fmt\"",
-		"\"go.viam.com/utils/rpc\"\n",
-		"\"errors\"",
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, "", clientCode, parser.AllErrors)
+	if err != nil {
+		log.Fatalf("Failed parse file: %v", err)
 	}
 
-	for _, replacement := range replacements {
-		imports = strings.ReplaceAll(imports, replacement, "")
+	var imports []string
+	for _, imp := range node.Imports {
+		path := imp.Path.Value
+		if err != nil {
+			log.Fatalf("Failed to unquote import path: %v", err)
+		}
+		if imp.Name != nil {
+			path = fmt.Sprintf("%s %s", imp.Name.Name, path)
+		}
+		imports = append(imports, path)
 	}
 
-	goTmplInputs.Imports = imports
+	var functions []string
+	ast.Inspect(node, func(n ast.Node) bool {
+		if funcDecl, ok := n.(*ast.FuncDecl); ok {
+			name, args, returns := parseFunctionSignature(module.ResourceSubtype, module.ResourceSubtypePascal, funcDecl)
+			if name != "" {
+				functions = append(functions, formatEmptyFunction(module.ModuleCamel+module.ModelPascal, name, args, returns))
+			}
+		}
+		return true
+	})
 
+	goTmplInputs.Imports = strings.Join(imports, "\n")
 	if module.ResourceType == "component" {
 		goTmplInputs.ObjName = module.ResourceSubtypePascal
 	} else {
 		goTmplInputs.ObjName = "Service"
 	}
 	goTmplInputs.ModelType = module.ModuleCamel + module.ModelPascal
-	goTmplInputs.Functions = parseFuncs(module.ResourceSubtype, module.ResourceSubtypePascal, goTmplInputs.ModelType, clientCode)
+	goTmplInputs.Functions = strings.Join(functions, " ")
 	goTmplInputs.Module = module
 
 	return goTmplInputs
@@ -99,7 +109,7 @@ func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string
 	if !unicode.IsUpper(rune(funcName[0])) {
 		return
 	}
-	if funcName == "Close" {
+	if funcName == "Close" || funcName == "Name" || funcName == "Reconfigure" {
 		return
 	}
 
@@ -157,28 +167,6 @@ func formatEmptyFunction(receiver string, funcName string, args string, returns 
 
 }
 
-// parseFuncs inspects the client code as an AST, parses the functions, and outputs the method stubs
-func parseFuncs(resourceSubtype string, resourceSubtypePascal string, modelType string, code string) string {
-	var functions []string
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, "", code, parser.AllErrors)
-	if err != nil {
-		fmt.Println("Error parsing source:", err)
-		return ""
-	}
-
-	ast.Inspect(node, func(n ast.Node) bool {
-		if funcDecl, ok := n.(*ast.FuncDecl); ok {
-			name, args, returns := parseFunctionSignature(resourceSubtype, resourceSubtypePascal, funcDecl)
-			if name != "" {
-				functions = append(functions, formatEmptyFunction(modelType, name, args, returns))
-			}
-		}
-		return true
-	})
-	return strings.Join(functions, " ")
-}
-
 // RenderGoTemplates outputs the method stubs for module
 func RenderGoTemplates(module common.ModuleInputs) ([]byte, error) {
 	clientCode, err := getClientCode(module)
@@ -198,5 +186,4 @@ func RenderGoTemplates(module common.ModuleInputs) ([]byte, error) {
 		return empty, err
 	}
 	return output.Bytes(), nil
-
 }
