@@ -9,26 +9,25 @@ import (
 	"go/printer"
 	"go/token"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"text/template"
 	"unicode"
 
-	"go.viam.com/rdk/cli/module_generate/common"
-
 	"github.com/pkg/errors"
+
+	"go.viam.com/rdk/cli/module_generate/common"
 )
 
 //go:embed tmpl-module
 var goTmpl string
 
-// getClientCode grabs client.go code of component type
+// getClientCode grabs client.go code of component type.
 func getClientCode(module common.ModuleInputs) (string, error) {
 	url := fmt.Sprintf("https://raw.githubusercontent.com/viamrobotics/rdk/refs/tags/v%s/%ss/%s/client.go", module.SDKVersion, module.ResourceType, module.ResourceSubtype)
 	resp, err := http.Get(url)
 	if err != nil {
-		return "", errors.Wrapf(err, "cannot get latest release")
+		return "", errors.Wrapf(err, "cannot get client code")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -36,28 +35,25 @@ func getClientCode(module common.ModuleInputs) (string, error) {
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return url, errors.Errorf("Error reading response body:", err)
+		return url, errors.Errorf("error reading response body:", err)
 	}
 	clientCode := string(body)
 	return clientCode, nil
 }
 
-// setGoModuleTemplate sets the imports and functions for the go method stubs
-func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.GoModuleTmpl {
+// setGoModuleTemplate sets the imports and functions for the go method stubs.
+func setGoModuleTemplate(clientCode string, module common.ModuleInputs) (*common.GoModuleTmpl, error) {
 	var goTmplInputs common.GoModuleTmpl
 
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, "", clientCode, parser.AllErrors)
 	if err != nil {
-		log.Fatalf("Failed parse file: %v", err)
+		return nil, errors.Wrap(err, "failed to parse client code")
 	}
 
 	var imports []string
 	for _, imp := range node.Imports {
 		path := imp.Path.Value
-		if err != nil {
-			log.Fatalf("Failed to unquote import path: %v", err)
-		}
 		if imp.Name != nil {
 			path = fmt.Sprintf("%s %s", imp.Name.Name, path)
 		}
@@ -85,10 +81,10 @@ func setGoModuleTemplate(clientCode string, module common.ModuleInputs) common.G
 	goTmplInputs.Functions = strings.Join(functions, " ")
 	goTmplInputs.Module = module
 
-	return goTmplInputs
+	return &goTmplInputs, nil
 }
 
-// formatType outputs typeExpr as readable string
+// formatType outputs typeExpr as readable string.
 func formatType(typeExpr ast.Expr) string {
 	var buf bytes.Buffer
 	err := printer.Fprint(&buf, token.NewFileSet(), typeExpr)
@@ -98,8 +94,8 @@ func formatType(typeExpr ast.Expr) string {
 	return buf.String()
 }
 
-// parseFunctionSignature parses function declarations into the function name, the arguments, and the return types
-func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string, funcDecl *ast.FuncDecl) (name string, args string, returns []string) {
+// parseFunctionSignature parses function declarations into the function name, the arguments, and the return types.
+func parseFunctionSignature(resourceSubtype, resourceSubtypePascal string, funcDecl *ast.FuncDecl) (name, args string, returns []string) {
 	if funcDecl == nil {
 		return
 	}
@@ -149,11 +145,10 @@ func parseFunctionSignature(resourceSubtype string, resourceSubtypePascal string
 	}
 
 	return funcName, strings.Join(params, ", "), returns
-
 }
 
-// formatEmptyFunction outputs the new function that removes the function body, adds the panic unimplemented statement, and replaces the receiver with the new model type
-func formatEmptyFunction(receiver string, funcName string, args string, returns []string) string {
+// formatEmptyFunction outputs the new function that removes the function body, adds the panic unimplemented statement, and replaces the receiver with the new model type.
+func formatEmptyFunction(receiver, funcName, args string, returns []string) string {
 	var returnDef string
 	if len(returns) == 0 {
 		returnDef = ""
@@ -164,18 +159,19 @@ func formatEmptyFunction(receiver string, funcName string, args string, returns 
 	}
 	newFunc := fmt.Sprintf("func (s *%s) %s(%s) %s{\n\tpanic(\"not implemented\")\n}\n\n", receiver, funcName, args, returnDef)
 	return newFunc
-
 }
 
-// RenderGoTemplates outputs the method stubs for module
+// RenderGoTemplates outputs the method stubs for created module.
 func RenderGoTemplates(module common.ModuleInputs) ([]byte, error) {
 	clientCode, err := getClientCode(module)
 	var empty []byte
 	if err != nil {
-		fmt.Print(err)
 		return empty, err
 	}
-	goModule := setGoModuleTemplate(clientCode, module)
+	goModule, err := setGoModuleTemplate(clientCode, module)
+	if err != nil {
+		return empty, err
+	}
 	var output bytes.Buffer
 	tmpl, err := template.New("module").Parse(goTmpl)
 	if err != nil {

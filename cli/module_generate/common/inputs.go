@@ -7,6 +7,7 @@ type ModuleInputs struct {
 	ModuleName       string    `json:"module_name"`
 	IsPublic         bool      `json:"-"`
 	Namespace        string    `json:"namespace"`
+	OrgID            string    `json:"-"`
 	Language         string    `json:"language"`
 	Resource         string    `json:"-"`
 	ResourceType     string    `json:"resource_type"`
@@ -32,7 +33,7 @@ type ModuleInputs struct {
 	SDKVersion string `json:"-"`
 }
 
-// GoModuleTmpl contains necessary information to fill out the go method stubs
+// GoModuleTmpl contains necessary information to fill out the go method stubs.
 type GoModuleTmpl struct {
 	Module    ModuleInputs
 	ModelType string

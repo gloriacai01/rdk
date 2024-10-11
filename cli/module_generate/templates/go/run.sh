@@ -4,8 +4,7 @@ cd `dirname $0`
 MODULE=$(basename "$PWD")
 export PATH=$PATH:$(go env GOPATH)/bin
 
-# rm -rf go.sum
-# go mod init $MODULE  > /dev/null 2>&1
+
 echo "Downloading necessary go packages..."
 if ! ( 
     go get go.viam.com/rdk@latest  > /dev/null 2>&1

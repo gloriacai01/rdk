@@ -15,9 +15,6 @@ import (
 	"text/template"
 	"time"
 
-	"go.viam.com/rdk/cli/module_generate/common"
-	gen "go.viam.com/rdk/cli/module_generate/scripts"
-
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
 	"github.com/pkg/errors"
@@ -25,6 +22,9 @@ import (
 	"go.viam.com/utils"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+
+	"go.viam.com/rdk/cli/module_generate/common"
+	gen "go.viam.com/rdk/cli/module_generate/scripts"
 )
 
 //go:embed module_generate/scripts
@@ -38,6 +38,7 @@ const (
 	basePath       = "module_generate"
 	templatePrefix = "tmpl-"
 	python         = "python"
+	golang         = "go"
 )
 
 var (
@@ -55,12 +56,12 @@ func GenerateModuleAction(cCtx *cli.Context) error {
 }
 
 func (c *viamClient) generateModuleAction(cCtx *cli.Context) error {
-	var newModule *moduleInputs
+	var newModule *common.ModuleInputs
 	var err error
 	resourceType := cCtx.String(moduleFlagResourceType)
 	resourceSubtype := cCtx.String(moduleFlagResourceSubtype)
 	if resourceSubtype != "" && resourceType != "" {
-		newModule = &moduleInputs{
+		newModule = &common.ModuleInputs{
 			ModuleName:       "my-module",
 			IsPublic:         false,
 			Namespace:        "my-org",
@@ -207,7 +208,7 @@ func promptUser() (*common.ModuleInputs, error) {
 				Title("Specify the language for the module:").
 				Options(
 					huh.NewOption("Python", python),
-					huh.NewOption("Go", "go"),
+					huh.NewOption("Go", golang),
 				).
 				Value(&newModule.Language),
 			huh.NewConfirm().
@@ -285,7 +286,7 @@ func promptUser() (*common.ModuleInputs, error) {
 	return &newModule, nil
 }
 
-func wrapResolveOrg(cCtx *cli.Context, c *viamClient, newModule *moduleInputs) error {
+func wrapResolveOrg(cCtx *cli.Context, c *viamClient, newModule *common.ModuleInputs) error {
 	match, err := regexp.MatchString("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", newModule.Namespace)
 	if !match || err != nil {
 		// If newModule.Namespace is NOT a UUID
@@ -306,7 +307,7 @@ func wrapResolveOrg(cCtx *cli.Context, c *viamClient, newModule *moduleInputs) e
 	return nil
 }
 
-func catchResolveOrgErr(cCtx *cli.Context, c *viamClient, newModule *moduleInputs, caughtErr error) error {
+func catchResolveOrgErr(cCtx *cli.Context, c *viamClient, newModule *common.ModuleInputs, caughtErr error) error {
 	if strings.Contains(caughtErr.Error(), "not logged in") {
 		originalWriter := cCtx.App.Writer
 		cCtx.App.Writer = io.Discard
@@ -325,7 +326,7 @@ func catchResolveOrgErr(cCtx *cli.Context, c *viamClient, newModule *moduleInput
 }
 
 // populateAdditionalInfo fills in additional info in newModule.
-func populateAdditionalInfo(newModule *moduleInputs) {
+func populateAdditionalInfo(newModule *common.ModuleInputs) {
 	newModule.GeneratedOn = time.Now().UTC()
 	newModule.GeneratorVersion = version
 	newModule.ResourceSubtype = strings.Split(newModule.Resource, " ")[0]
@@ -339,7 +340,7 @@ func populateAdditionalInfo(newModule *moduleInputs) {
 	newModule.ModuleLowercase = strings.ToLower(newModule.ModulePascal)
 	newModule.API = fmt.Sprintf("rdk:%s:%s", newModule.ResourceType, newModule.ResourceSubtype)
 	newModule.ResourceSubtypePascal = spaceReplacer.Replace(titleCaser.String(replacer.Replace(newModule.ResourceSubtype)))
-	if newModule.Language == "go" {
+	if newModule.Language == golang {
 		// go sdk does not use underscores
 		newModule.ResourceSubtype = spaceReplacer.Replace(newModule.ResourceSubtype)
 	}
@@ -348,13 +349,10 @@ func populateAdditionalInfo(newModule *moduleInputs) {
 	newModule.ModelTriple = fmt.Sprintf("%s:%s:%s", newModule.Namespace, newModule.ModuleName, newModule.ModelName)
 	newModule.ModelCamel = strings.ToLower(string(newModule.ModelPascal[0])) + newModule.ModelPascal[1:]
 	newModule.ModelLowercase = strings.ToLower(newModule.ModelPascal)
-
-	return &newModule, nil
 }
 
 // Creates a new directory with moduleName.
 func setupDirectories(c *cli.Context, moduleName string) error {
-
 	debugf(c.App.Writer, c.Bool(debugFlag), "Setting up directories")
 	err := os.Mkdir(moduleName, 0o750)
 	if err != nil {
@@ -553,7 +551,7 @@ func generateStubs(c *cli.Context, module common.ModuleInputs) error {
 	switch module.Language {
 	case python:
 		return generatePythonStubs(module)
-	case "go":
+	case golang:
 		return generateGolangStubs(module)
 	default:
 		return errors.Errorf("cannot generate stubs for language %s", module.Language)
@@ -563,9 +561,8 @@ func generateStubs(c *cli.Context, module common.ModuleInputs) error {
 func generateGolangStubs(module common.ModuleInputs) error {
 	out, err := gen.RenderGoTemplates(module)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "cannot generate go stubs -- generator script encountered an error")
 	}
-
 	modulePath := filepath.Join(module.ModuleName, "models", "module.go")
 	moduleFile, err := os.Create(modulePath)
 	if err != nil {
@@ -574,11 +571,10 @@ func generateGolangStubs(module common.ModuleInputs) error {
 	defer moduleFile.Close()
 	_, err = moduleFile.Write(out)
 	if err != nil {
-		return errors.Wrap(err, "cannot generate python stubs -- unable to write to file")
+		return errors.Wrap(err, "cannot generate go stubs -- unable to write to file")
 	}
 
 	return nil
-
 }
 
 func generatePythonStubs(module common.ModuleInputs) error {
@@ -626,7 +622,7 @@ func getLatestSDKTag(c *cli.Context, language string) (string, error) {
 	var repo string
 	if language == python {
 		repo = "viam-python-sdk"
-	} else if language == "go" {
+	} else if language == golang {
 		repo = "rdk"
 	}
 	debugf(c.App.Writer, c.Bool(debugFlag), "Getting the latest release tag for %s", repo)
@@ -660,10 +656,10 @@ func getLatestSDKTag(c *cli.Context, language string) (string, error) {
 	return version, nil
 }
 
-func generateCloudBuild(c *cli.Context, module common.moduleInputs) error {
+func generateCloudBuild(c *cli.Context, module common.ModuleInputs) error {
 	debugf(c.App.Writer, c.Bool(debugFlag), "Setting cloud build functionality to %s", module.EnableCloudBuild)
 	switch module.Language {
-	case "python":
+	case python:
 		if module.EnableCloudBuild {
 			err := os.Remove(filepath.Join(module.ModuleName, "run.sh"))
 			if err != nil {
@@ -676,7 +672,7 @@ func generateCloudBuild(c *cli.Context, module common.moduleInputs) error {
 			}
 		}
 
-	case "go":
+	case golang:
 		if module.EnableCloudBuild {
 			os.Remove(filepath.Join(module.ModuleName, "run.sh"))
 		} else {
@@ -729,7 +725,8 @@ func renderManifest(c *cli.Context, moduleID string, module common.ModuleInputs)
 		},
 	}
 
-	if module.Language == python {
+	switch module.Language {
+	case python:
 		if module.EnableCloudBuild {
 			manifest.Build = &manifestBuildInfo{
 				Setup: "./setup.sh",
@@ -741,7 +738,8 @@ func renderManifest(c *cli.Context, moduleID string, module common.ModuleInputs)
 		} else {
 			manifest.Entrypoint = "./run.sh"
 		}
-	case "go":
+
+	case golang:
 		if module.EnableCloudBuild {
 			manifest.Build = &manifestBuildInfo{
 				Setup: "make setup",
