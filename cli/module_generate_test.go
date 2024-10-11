@@ -28,7 +28,6 @@ func TestGenerateModuleAction(t *testing.T) {
 		ResourceSubtype:  "arm",
 		ModelName:        "my-model",
 		EnableCloudBuild: true,
-		InitializeGit:    false,
 		GeneratorVersion: "0.1.0",
 		GeneratedOn:      time.Now().UTC(),
 
@@ -84,7 +83,7 @@ func TestGenerateModuleAction(t *testing.T) {
 
 	t.Run("test copy python template", func(t *testing.T) {
 		setupDirectories(cCtx, expectedPythonTestModule.ModuleName)
-		err := copyLanguageTemplate(cCtx, "python", expectedPythonTestModule.ModelName, expectedPythonTestModule.ModuleName)
+		err := copyLanguageTemplate(cCtx, "python", expectedPythonTestModule.ModuleName)
 		test.That(t, err, test.ShouldBeNil)
 		_, err = os.Stat(filepath.Join(modulePath, "src"))
 		test.That(t, err, test.ShouldBeNil)
