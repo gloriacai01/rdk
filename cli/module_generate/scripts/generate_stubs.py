@@ -124,8 +124,8 @@ from viam.proto.common import ResourceName
 from viam.resource.base import ResourceBase
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
-{0}
 from viam.{1}s.{2} import *
+{0}
 
 
 class {3}({4}, EasyResource):
