@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 from importlib import import_module
-from typing import List
 
 
 def return_attribute(resource_name: str, attr: str) -> ast.Attribute:
