@@ -49,6 +49,7 @@ def main(
         "abc",
         "component_base",
         "service_base",
+        "sys",
         "viam.resource.types",
     ]
     abstract_methods = []
@@ -116,6 +117,7 @@ def main(
     )
     main_file = '''
 import asyncio
+import sys
 from typing import ClassVar, Mapping, Sequence
 from typing_extensions import Self
 from viam.module.module import Module
@@ -124,8 +126,8 @@ from viam.proto.common import ResourceName
 from viam.resource.base import ResourceBase
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
-from viam.{1}s.{2} import *
 {0}
+from viam.{1}s.{2} import *
 
 
 class {3}({4}, EasyResource):
