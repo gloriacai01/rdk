@@ -1,3 +1,4 @@
+// Package common contains defined types used for module generation
 package common
 
 import "time"

@@ -30,7 +30,7 @@ import (
 //go:embed module_generate/scripts
 var scripts embed.FS
 
-//go:embed all:module_generate/templates/*
+//go:embed all:module_generate/_templates/*
 var templates embed.FS
 
 const (
@@ -43,7 +43,7 @@ const (
 
 var (
 	scriptsPath   = filepath.Join(basePath, "scripts")
-	templatesPath = filepath.Join(basePath, "templates")
+	templatesPath = filepath.Join(basePath, "_templates")
 )
 
 // GenerateModuleAction generates the module stubs and files.
@@ -564,11 +564,12 @@ func generateGolangStubs(module common.ModuleInputs) error {
 		return errors.Wrap(err, "cannot generate go stubs -- generator script encountered an error")
 	}
 	modulePath := filepath.Join(module.ModuleName, "models", "module.go")
+	//nolint:gosec
 	moduleFile, err := os.Create(modulePath)
 	if err != nil {
 		return errors.Wrap(err, "cannot generate go stubs -- unable to open file")
 	}
-	defer moduleFile.Close()
+	defer utils.UncheckedErrorFunc(moduleFile.Close)
 	_, err = moduleFile.Write(out)
 	if err != nil {
 		return errors.Wrap(err, "cannot generate go stubs -- unable to write to file")
@@ -674,9 +675,10 @@ func generateCloudBuild(c *cli.Context, module common.ModuleInputs) error {
 
 	case golang:
 		if module.EnableCloudBuild {
-			os.Remove(filepath.Join(module.ModuleName, "run.sh"))
-		} else {
-			os.Remove(filepath.Join(module.ModuleName, ".canon.yaml"))
+			err := os.Remove(filepath.Join(module.ModuleName, "run.sh"))
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

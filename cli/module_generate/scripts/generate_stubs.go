@@ -1,3 +1,4 @@
+// Package scripts contains scripts that generate method stubs for modules
 package scripts
 
 import (
@@ -15,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/pkg/errors"
+	"go.viam.com/utils"
 
 	"go.viam.com/rdk/cli/module_generate/common"
 )
@@ -24,18 +26,26 @@ var goTmpl string
 
 // getClientCode grabs client.go code of component type.
 func getClientCode(module common.ModuleInputs) (string, error) {
-	url := fmt.Sprintf("https://raw.githubusercontent.com/viamrobotics/rdk/refs/tags/v%s/%ss/%s/client.go", module.SDKVersion, module.ResourceType, module.ResourceSubtype)
-	resp, err := http.Get(url)
+	url := fmt.Sprintf("https://raw.githubusercontent.com/viamrobotics/rdk/refs/tags/v%s/%ss/%s/client.go",
+		module.SDKVersion, module.ResourceType, module.ResourceSubtype)
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return "", errors.Wrapf(err, "cannot get client code")
 	}
-	defer resp.Body.Close()
+	//nolint:bodyclose
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", errors.Wrapf(err, "cannot get client code")
+	}
+	defer utils.UncheckedErrorFunc(resp.Body.Close)
 	if resp.StatusCode != http.StatusOK {
 		return "", errors.Errorf("unexpected http GET status: %s getting %s", resp.Status, url)
 	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return url, errors.Errorf("error reading response body:", err)
+		return url, errors.Wrapf(err, "error reading response body")
 	}
 	clientCode := string(body)
 	return clientCode, nil
@@ -147,7 +157,8 @@ func parseFunctionSignature(resourceSubtype, resourceSubtypePascal string, funcD
 	return funcName, strings.Join(params, ", "), returns
 }
 
-// formatEmptyFunction outputs the new function that removes the function body, adds the panic unimplemented statement, and replaces the receiver with the new model type.
+// formatEmptyFunction outputs the new function that removes the function body, adds the panic unimplemented statement,
+// and replaces the receiver with the new model type.
 func formatEmptyFunction(receiver, funcName, args string, returns []string) string {
 	var returnDef string
 	if len(returns) == 0 {
