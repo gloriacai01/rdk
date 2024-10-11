@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from importlib import import_module
+from typing import List
 
 
 def return_attribute(resource_name: str, attr: str) -> ast.Attribute:
@@ -21,6 +22,14 @@ def replace_async_func(stmt: ast.AsyncFunctionDef) -> None:
             cause=None)
     ]
     stmt.decorator_list = []
+
+
+def get_final_imports(imports: List[str]) -> List[str]:
+    final_imports = []
+    for i in imports:
+        if i not in final_imports:
+            final_imports.append(i)
+    return final_imports
 
 
 def main(
@@ -49,7 +58,6 @@ def main(
         "abc",
         "component_base",
         "service_base",
-        "sys",
         "viam.resource.types",
     ]
     abstract_methods = []
@@ -117,7 +125,6 @@ def main(
     )
     main_file = '''
 import asyncio
-import sys
 from typing import ClassVar, Mapping, Sequence
 from typing_extensions import Self
 from viam.module.module import Module
@@ -177,7 +184,7 @@ if __name__ == '__main__':
     asyncio.run(Module.run_from_registry())
 
 '''.format(
-        "\n".join(list(set(imports))),
+        "\n".join(get_final_imports(imports)),
         resource_type,
         resource_subtype,
         model_name_pascal,
