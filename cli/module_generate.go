@@ -307,8 +307,8 @@ func wrapResolveOrg(cCtx *cli.Context, c *viamClient, newModule *common.ModuleIn
 	return nil
 }
 
-func catchResolveOrgErr(cCtx *cli.Context, c *viamClient, newModule *common.ModuleInputs, caughtErr error) error {
-	if strings.Contains(caughtErr.Error(), "not logged in") {
+func catchResolveOrgErr(cCtx *cli.Context, c *viamClient, newModule *moduleInputs, caughtErr error) error {
+	if strings.Contains(caughtErr.Error(), "not logged in") || strings.Contains(caughtErr.Error(), "error while refreshing token") {
 		originalWriter := cCtx.App.Writer
 		cCtx.App.Writer = io.Discard
 		err := c.loginAction(cCtx)
@@ -539,10 +539,7 @@ func renderTemplate(c *cli.Context, module common.ModuleInputs) error {
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // Generate stubs for the resource.
